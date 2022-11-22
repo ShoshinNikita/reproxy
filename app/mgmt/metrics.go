@@ -36,14 +36,14 @@ func NewMetrics() *Metrics {
 			Name: "response_status",
 			Help: "Status of HTTP responses.",
 		},
-		[]string{"status"},
+		[]string{"server", "status"},
 	)
 
 	res.httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_response_time_seconds",
 		Help:    "Duration of HTTP requests.",
 		Buckets: []float64{0.01, 0.1, 0.5, 1, 2, 3, 5},
-	}, []string{"path"})
+	}, []string{"server"})
 
 	prometheus.Unregister(prometheus.NewGoCollector()) //nolint
 
@@ -64,18 +64,17 @@ func NewMetrics() *Metrics {
 func (m *Metrics) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		path := r.URL.Path
 		server := r.URL.Hostname()
 		if server == "" {
 			server = strings.Split(r.Host, ":")[0]
 		}
 
-		timer := prometheus.NewTimer(m.httpDuration.WithLabelValues(path))
+		timer := prometheus.NewTimer(m.httpDuration.WithLabelValues(server))
 		rw := NewResponseWriter(w)
 		next.ServeHTTP(rw, r)
 
 		statusCode := rw.statusCode
-		m.responseStatus.WithLabelValues(strconv.Itoa(statusCode)).Inc()
+		m.responseStatus.WithLabelValues(server, strconv.Itoa(statusCode)).Inc()
 		m.totalRequests.WithLabelValues(server).Inc()
 
 		timer.ObserveDuration()
